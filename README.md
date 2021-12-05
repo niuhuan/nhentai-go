@@ -3,6 +3,11 @@ NHENTAI-GO
 
 nHentai api with golang
 
+## Features
+
+- List or search comics
+- Get comic info and comic page images
+
 ## Usage
 
 ```go
@@ -29,19 +34,19 @@ func main() {
 		ResponseHeaderTimeout: time.Second * 10,
 		IdleConnTimeout:       time.Second * 10,
 	}
-	
+
 	// get comic page 
 	// data, err := client.Comics(3)
-	
+
 	// get comic page by tag
-	// data, err := client.ComicsByTag("group", 1)
-	
+	// data, err := client.ComicsByTagName("group", 1)
+
 	// get comic info
 	// data, err := client.ComicInfo(382384)
-	
+
 	// get tags page
 	// data, err := client.Tags(1)
-	
+
 	// print comic page picture url
 	// println(client.PageUrl(2075216, 2, "j"))
 }

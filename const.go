@@ -1,6 +1,5 @@
 package nhentai
 
-const MirrorOrigin = "nhentai.net"
 
 const TagLanguageJapanese = 6346
 const TagLanguageEnglish = 12227

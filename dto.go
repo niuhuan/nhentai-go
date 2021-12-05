@@ -33,7 +33,7 @@ type TagPageTag struct {
 
 type ComicInfo struct {
 	Id           int             `json:"id"`
-	MediaId      string          `json:"media_id"`
+	MediaId      int             `json:"media_id"`
 	Title        ComicInfoTitle  `json:"title"`
 	Images       ComicInfoImages `json:"images"`
 	Scanlator    string          `json:"scanlator"`
@@ -71,3 +71,23 @@ type ImageInfo struct {
 	// H height
 	H int `json:"h"`
 }
+
+// Condition 条件
+// (双引号会被过滤调)
+type Condition struct {
+	Type    string `json:"type"`
+	Exclude bool   `json:"exclude"`
+	Content string `json:"content"`
+}
+
+// ConditionRaw 只直接放入搜索框 (Exclude不能true)
+// 如果是111,1234等会报错, 直接跳转到了详情页面
+// const ConditionRaw = "raw"
+
+// ConditionString 会加了双引号在放入搜索框
+const ConditionString = "string"
+
+// ConditionTag 标签
+const ConditionTag = "tag"
+
+// ... 或者更多, 包括tag都不会再做处理

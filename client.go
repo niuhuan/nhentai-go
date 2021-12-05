@@ -1,43 +1,76 @@
 package nhentai
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/json-iterator/go"
+	"github.com/json-iterator/go/extra"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
+
+
+var json jsoniter.API
+
+func init() {
+	extra.RegisterFuzzyDecoders()
+	json = jsoniter.ConfigCompatibleWithStandardLibrary
+}
+
+
+const MirrorOrigin = "nhentai.net"
 
 // Client nHentai客户端
 type Client struct {
 	// http.Client 继承HTTP客户端
 	http.Client
-	// Mirror 分流
-	Mirror string
-}
-
-// GetMirror 获取当前的镜像网站
-func (c *Client) GetMirror() string {
-	if c.Mirror == "" {
-		return MirrorOrigin
-	}
-	return c.Mirror
 }
 
 // Comics 列出漫画
 // https://nhentai.net/?page=1
 func (c *Client) Comics(page int) (*ComicPageData, error) {
-	urlStr := fmt.Sprintf("https://%s/?page=%d", c.GetMirror(), page)
+	urlStr := fmt.Sprintf("https://%s/?page=%d", MirrorOrigin, page)
 	return c.parsePage(urlStr)
 }
 
-// ComicsByTag 列出标签下的漫画
+func (c *Client) ComicsByCondition(conditions []Condition, page int) (*ComicPageData, error) {
+	builder := strings.Builder{}
+	for i := range conditions {
+		conditions[i].Type = strings.TrimSpace(conditions[i].Type)
+		if len(conditions[i].Type) == 0 {
+			return nil, errors.New("BLANK TYPE")
+		} else if "string" == conditions[i].Type {
+			if conditions[i].Exclude {
+				builder.WriteString("-")
+			}
+			builder.WriteString("\"")
+			builder.WriteString(strings.ReplaceAll(strings.TrimSpace(conditions[i].Content), "\"", ""))
+			builder.WriteString("\"")
+			builder.WriteString(" ")
+		}
+	}
+	return c.ComicByRawCondition(builder.String(), page)
+}
+
+// ComicByRawCondition 搜索
+// https://nhentai.net/search/?q=${urlEncode(conditions)}&page=${page}
+func (c *Client) ComicByRawCondition(conditions string, page int) (*ComicPageData, error) {
+	conditions = strings.TrimSpace(conditions)
+	if len(conditions) == 0 {
+		return c.Comics(page)
+	}
+	urlStr := fmt.Sprintf("https://%s/search/?q=%s&page=%d", MirrorOrigin, url.QueryEscape(conditions), page)
+	return c.parsePage(urlStr)
+}
+
+// ComicsByTagName 列出标签下的漫画
 // https://nhentai.net/tag/group/?page=1
-func (c *Client) ComicsByTag(tag string, page int) (*ComicPageData, error) {
-	urlStr := fmt.Sprintf("https://%s/tag/%s/?page=%d", c.GetMirror(), tag, page)
+func (c *Client) ComicsByTagName(tag string, page int) (*ComicPageData, error) {
+	urlStr := fmt.Sprintf("https://%s/tag/%s/?page=%d", MirrorOrigin, tag, page)
 	return c.parsePage(urlStr)
 }
 
@@ -46,6 +79,14 @@ func (c *Client) parsePage(urlStr string) (*ComicPageData, error) {
 	doc, err := c.parseUrlToDoc(urlStr)
 	if err != nil {
 		return nil, err
+	}
+	if strings.Contains(doc.Text(), "No results found") {
+		return &ComicPageData{
+			PageData: PageData{
+				PageCount: 0,
+			},
+			Records: make([]ComicSimple, 0),
+		}, nil
 	}
 	var divSelection *goquery.Selection
 	doc.Find(".container.index-container:not(.index-popular)").Each(func(i int, selection *goquery.Selection) {
@@ -81,7 +122,10 @@ func (c *Client) parsePage(urlStr string) (*ComicPageData, error) {
 			ThumbHeight: thumbHeight,
 		}
 	})
-	lastPage := c.parseLastPage(doc)
+	lastPage, err := c.parseLastPage(doc)
+	if err != nil {
+		return nil, err
+	}
 	return &ComicPageData{
 		PageData: PageData{
 			PageCount: lastPage,
@@ -105,7 +149,7 @@ func (c *Client) parseCover(selection *goquery.Selection) (string, int, int, int
 
 // ComicInfo 获取漫画的信息
 func (c *Client) ComicInfo(id int) (*ComicInfo, error) {
-	urlStr := fmt.Sprintf("https://%s/api/gallery/%d", c.GetMirror(), id)
+	urlStr := fmt.Sprintf("https://%s/api/gallery/%d", MirrorOrigin, id)
 	rsp, err := c.Get(urlStr)
 	if err != nil {
 		return nil, err
@@ -127,13 +171,16 @@ func (c *Client) ComicInfo(id int) (*ComicInfo, error) {
 // Tags 获取标签
 // https://nhentai.net/tags/?page=1
 func (c *Client) Tags(page int) (*TagPageData, error) {
-	urlStr := fmt.Sprintf("https://%s/tags/?page=%d", c.GetMirror(), page)
+	urlStr := fmt.Sprintf("https://%s/tags/?page=%d", MirrorOrigin, page)
 	doc, err := c.parseUrlToDoc(urlStr)
 	if err != nil {
 		return nil, err
 	}
 	tags := c.parseTags(doc.Find("div.container#tag-container>section>a"))
-	lastPage := c.parseLastPage(doc)
+	lastPage, err := c.parseLastPage(doc)
+	if err != nil {
+		return nil, err
+	}
 	return &TagPageData{
 		PageData: PageData{
 			PageCount: lastPage,
@@ -162,11 +209,22 @@ func (c *Client) parseTags(tagSelections *goquery.Selection) []TagPageTag {
 }
 
 // parseLastPage 获取一共多少页
-func (c *Client) parseLastPage(doc *goquery.Document) int {
-	lastPageHref, _ := doc.Find(".pagination>.last").Attr("href")
-	lastPageHref = lastPageHref[strings.Index(lastPageHref, "page=")+5:]
+func (c *Client) parseLastPage(doc *goquery.Document) (int, error) {
+	lastPageSelection := doc.Find(".pagination>.last")
+	if lastPageSelection.Size() == 0 {
+		return 0, errors.New("NOT MATCH PAGE")
+	}
+	lastPageHref, ex := lastPageSelection.Attr("href")
+	if !ex {
+		return 0, errors.New("NOT MATCH PAGE")
+	}
+	pIndex := strings.Index(lastPageHref, "page=")
+	if pIndex < 0 {
+		return 0, errors.New("NOT MATCH PAGE")
+	}
+	lastPageHref = lastPageHref[pIndex+5:]
 	lastPage, _ := strconv.Atoi(lastPageHref)
-	return lastPage
+	return lastPage, nil
 }
 
 // parseUrlToDoc 从网址读取网页并且转换成document
@@ -182,20 +240,20 @@ func (c *Client) parseUrlToDoc(str string) (*goquery.Document, error) {
 // CoverUrl 拼接封面的URL
 // "https://t.nhentai.net/galleries/{media_id}/cover{cover_ext}"
 func (c *Client) CoverUrl(mediaId int, t string) string {
-	return fmt.Sprintf("https://t.%s/galleries/%d/cover.%s", c.GetMirror(), mediaId, c.GetExtension(t))
+	return fmt.Sprintf("https://t.%s/galleries/%d/cover.%s", MirrorOrigin, mediaId, c.GetExtension(t))
 }
 
 // ThumbnailUrl 拼接缩略图的URL
 // "https://t.nhentai.net/galleries/{media_id}/thumbnail{thumbnail_ext}"
 func (c *Client) ThumbnailUrl(mediaId int, t string) string {
-	return fmt.Sprintf("https://t.%s/galleries/%d/thumbnail.%s", c.GetMirror(), mediaId, c.GetExtension(t))
+	return fmt.Sprintf("https://t.%s/galleries/%d/thumbnail.%s", MirrorOrigin, mediaId, c.GetExtension(t))
 }
 
 // PageUrl
 // https://i.nhentai.net/galleries/{media_id}/{num}{extension}
 // {num} is {index + 1} (begin is 1)
 func (c *Client) PageUrl(mediaId int, num int, t string) string {
-	return fmt.Sprintf("https://i.%s/galleries/%d/%d.%s", c.GetMirror(), mediaId, num, c.GetExtension(t))
+	return fmt.Sprintf("https://i.%s/galleries/%d/%d.%s", MirrorOrigin, mediaId, num, c.GetExtension(t))
 }
 
 // GetExtension 使用type获得拓展名
