@@ -238,22 +238,29 @@ func (c *Client) parseUrlToDoc(str string) (*goquery.Document, error) {
 }
 
 // CoverUrl 拼接封面的URL
-// "https://t.nhentai.net/galleries/{media_id}/cover{cover_ext}"
+// "https://t.nhentai.net/galleries/{media_id}/cover.{cover_ext}"
 func (c *Client) CoverUrl(mediaId int, t string) string {
 	return fmt.Sprintf("https://t.%s/galleries/%d/cover.%s", MirrorOrigin, mediaId, c.GetExtension(t))
 }
 
 // ThumbnailUrl 拼接缩略图的URL
-// "https://t.nhentai.net/galleries/{media_id}/thumbnail{thumbnail_ext}"
+// "https://t.nhentai.net/galleries/{media_id}/thumbnail.{thumbnail_ext}"
 func (c *Client) ThumbnailUrl(mediaId int, t string) string {
 	return fmt.Sprintf("https://t.%s/galleries/%d/thumbnail.%s", MirrorOrigin, mediaId, c.GetExtension(t))
 }
 
 // PageUrl
-// https://i.nhentai.net/galleries/{media_id}/{num}{extension}
+// https://i.nhentai.net/galleries/{media_id}/{num}.{extension}
 // {num} is {index + 1} (begin is 1)
 func (c *Client) PageUrl(mediaId int, num int, t string) string {
 	return fmt.Sprintf("https://i.%s/galleries/%d/%d.%s", MirrorOrigin, mediaId, num, c.GetExtension(t))
+}
+
+// PageThumbnailUrl
+// https://i.nhentai.net/galleries/{media_id}/{num}t.{extension}
+// {num} is {index + 1} (begin is 1)
+func (c *Client) PageThumbnailUrl(mediaId int, num int, t string) string {
+	return fmt.Sprintf("https://t5.%s/galleries/%d/%dt.%s", MirrorOrigin, mediaId, num, c.GetExtension(t))
 }
 
 // GetExtension 使用type获得拓展名
