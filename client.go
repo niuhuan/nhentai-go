@@ -13,7 +13,6 @@ import (
 	"strings"
 )
 
-
 var json jsoniter.API
 
 func init() {
@@ -21,13 +20,14 @@ func init() {
 	json = jsoniter.ConfigCompatibleWithStandardLibrary
 }
 
-
 const MirrorOrigin = "nhentai.net"
 
 // Client nHentai客户端
 type Client struct {
 	// http.Client 继承HTTP客户端
 	http.Client
+	Cookie    string
+	UserAgent string
 }
 
 // Comics 列出漫画
@@ -145,6 +145,16 @@ func (c *Client) parseCover(selection *goquery.Selection) (string, int, int, int
 	mediaIdStr := thumb[strings.Index(thumb, "galleries")+10 : strings.LastIndex(thumb, "/")]
 	mediaId, _ := strconv.Atoi(mediaIdStr)
 	return thumb, width, thumbHeight, mediaId
+}
+
+func (c *Client) Get(url string) (*http.Response, error) {
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Add("Cookie", c.Cookie)
+	request.Header.Add("User-Agent", c.UserAgent)
+	return c.Client.Do(request)
 }
 
 // ComicInfo 获取漫画的信息
